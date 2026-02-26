@@ -1,94 +1,113 @@
 import React, { useState } from 'react';
+import emailjs from '@emailjs/browser';
 import { useApp } from '../App';
 import { AppScreen } from '../types';
 
 const Auth: React.FC = () => {
-  const [isLogin, setIsLogin] = useState(true);
   const { setScreen, users } = useApp();
+  const [isLogin, setIsLogin] = useState(true);
+  const [isVerifying, setIsVerifying] = useState(false); // Controls the OTP screen
   
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [phone, setPhone] = useState('');
+  const [userOtp, setUserOtp] = useState(''); // What the user types
+  const [generatedOtp, setGeneratedOtp] = useState(''); // The real code
+  const [loading, setLoading] = useState(false);
 
-  const handleAuth = () => {
-    setError('');
+  // --- FUNCTION 1: SEND REAL EMAIL ---
+  const handleStartSignup = async () => {
+    if (!name || !email || !password) return alert("Please fill all fields");
 
-    // Basic validation
-    if (!email || !password) {
-      setError('Missing email or password');
-      return;
-    }
+    setLoading(true);
+    const newOtp = Math.floor(1000 + Math.random() * 9000).toString(); // Create 4-digit code
+    setGeneratedOtp(newOtp);
 
-    if (isLogin) {
-      // CHECK GOOGLE SHEET: Look for matching email and password
-      const userMatch = users.find(u => 
-        u.email?.trim().toLowerCase() === email.trim().toLowerCase() && 
-        u.password?.toString().trim() === password.trim()
+    const templateParams = {
+      to_name: name,
+      to_email: email, // This sends it to the user's input email
+      otp: newOtp,
+    };
+
+    try {
+      await emailjs.send(
+        'service_o7mvi8b', // Paste Service ID here
+        'template_vm7dd1n', // Paste Template ID here
+        templateParams,
+        'J4ZWaktvcdEKd1xbm' // Paste Public Key here
       );
+      setIsVerifying(true); // Switch to the OTP input screen
+    } catch (error) {
+      alert("Email failed to send. Check your EmailJS keys.");
+      console.log(error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (userMatch) {
-        // Success!
-        setScreen(AppScreen.HOME);
-      } else {
-        // Fail
-        setError('Authentication failed. User not found in database.');
-      }
-    } else {
-      // For sign up in a demo, we just let them through
+  // --- FUNCTION 2: VERIFY & SAVE TO GOOGLE SHEET ---
+  const handleVerifyAndSave = async () => {
+    if (userOtp !== generatedOtp) return alert("Wrong code! Check your email again.");
+
+    setLoading(true);
+    try {
+      // Your existing Google Script logic
+      await fetch("https://script.google.com/macros/s/AKfycbx0X0lQubkUsql-E-v5sim-RdRzGcr7OOakfsPgA5_0ihbIM-25h33OevtDNaghUDDTVw/exec", {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, phone }),
+      });
+      alert("Verified! Account Created.");
       setScreen(AppScreen.HOME);
+    } catch (e) {
+      alert("Verified, but failed to save to Google Sheets.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col h-full p-8 bg-white overflow-y-auto">
-      <div className="mt-16 text-center mb-12">
-        <h1 className="text-3xl font-black text-gray-900 tracking-tight italic">VOLT<span className="text-green-500">SYNC</span></h1>
-        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Cloud Integrated Security</p>
+      <div className="mt-10 text-center mb-8">
+        <h1 className="text-3xl font-black italic">VOLT<span className="text-green-500">QUEST</span></h1>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-[11px] font-black mb-6 border border-red-100 flex items-center gap-3 animate-bounce">
-          <span className="bg-red-600 text-white w-5 h-5 rounded-full flex items-center justify-center">!</span>
-          {error}
+      {!isVerifying ? (
+        /* --- SIGNUP / LOGIN FORM --- */
+        <div className="space-y-4">
+          {!isLogin && (
+            <input type="text" placeholder="Full Name" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setName(e.target.value)} />
+          )}
+          <input type="email" placeholder="Email Address" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setPassword(e.target.value)} />
+          
+          <button 
+            onClick={isLogin ? () => setScreen(AppScreen.HOME) : handleStartSignup}
+            className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold uppercase"
+          >
+            {loading ? "Processing..." : (isLogin ? "Login" : "Register & Get Code")}
+          </button>
+          
+          <button onClick={() => setIsLogin(!isLogin)} className="w-full text-gray-400 text-xs font-bold uppercase">
+            {isLogin ? "Create Account" : "Back to Login"}
+          </button>
+        </div>
+      ) : (
+        /* --- OTP VERIFICATION SCREEN --- */
+        <div className="space-y-6 text-center animate-pulse">
+          <p className="text-sm text-gray-500">A code was sent to <b>{email}</b></p>
+          <input 
+            type="text" 
+            placeholder="0000" 
+            maxLength={4} 
+            className="w-full p-4 bg-gray-100 border-2 border-green-500 rounded-2xl text-center text-3xl font-black tracking-widest"
+            onChange={(e) => setUserOtp(e.target.value)}
+          />
+          <button onClick={handleVerifyAndSave} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black uppercase">
+            {loading ? "Checking..." : "Verify & Start"}
+          </button>
         </div>
       )}
-
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email</label>
-          <input 
-            type="email" 
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="example@mail.com" 
-            className="w-full bg-gray-50 border border-gray-100 p-4 rounded-2xl focus:ring-2 focus:ring-green-500/20 outline-none font-bold"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Password</label>
-          <input 
-            type="password" 
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••" 
-            className="w-full bg-gray-50 border border-gray-100 p-4 rounded-2xl focus:ring-2 focus:ring-green-500/20 outline-none font-bold"
-          />
-        </div>
-      </div>
-
-      <button 
-        onClick={handleAuth}
-        className="w-full bg-green-500 text-white py-4 rounded-2xl font-black text-sm mt-10 shadow-xl shadow-green-100 active:scale-95 transition-all uppercase tracking-widest"
-      >
-        {isLogin ? 'Verify & Login' : 'Create Account'}
-      </button>
-
-      <div className="mt-8 text-center">
-        <button onClick={() => setIsLogin(!isLogin)} className="text-gray-400 text-[10px] font-black uppercase tracking-widest hover:text-green-500 transition-colors">
-          {isLogin ? "Need an account?" : "Back to login"}
-        </button>
-      </div>
     </div>
   );
 };
