@@ -4,16 +4,17 @@ import { useApp } from '../App';
 import { AppScreen } from '../types';
 
 const Auth: React.FC = () => {
-  const { setScreen, users } = useApp();
+  // --- ADDED 'users' HERE ---
+  const { setScreen, users } = useApp(); 
   const [isLogin, setIsLogin] = useState(true);
-  const [isVerifying, setIsVerifying] = useState(false); // Controls the OTP screen
+  const [isVerifying, setIsVerifying] = useState(false);
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [userOtp, setUserOtp] = useState(''); // What the user types
-  const [generatedOtp, setGeneratedOtp] = useState(''); // The real code
+  const [userOtp, setUserOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
   const [loading, setLoading] = useState(false);
 
   // --- FUNCTION 1: SEND REAL EMAIL ---
@@ -21,23 +22,23 @@ const Auth: React.FC = () => {
     if (!name || !email || !password) return alert("Please fill all fields");
 
     setLoading(true);
-    const newOtp = Math.floor(1000 + Math.random() * 9000).toString(); // Create 4-digit code
+    const newOtp = Math.floor(1000 + Math.random() * 9000).toString();
     setGeneratedOtp(newOtp);
 
     const templateParams = {
       to_name: name,
-      to_email: email, // This sends it to the user's input email
+      to_email: email,
       otp: newOtp,
     };
 
     try {
       await emailjs.send(
-        'service_o7mvi8b', // Paste Service ID here
-        'template_vm7dd1n', // Paste Template ID here
+        'service_o7mvi8b',
+        'template_vm7dd1n',
         templateParams,
-        'J4ZWaktvcdEKd1xbm' // Paste Public Key here
+        'J4ZWaktvcdEKd1xbm'
       );
-      setIsVerifying(true); // Switch to the OTP input screen
+      setIsVerifying(true);
     } catch (error) {
       alert("Email failed to send. Check your EmailJS keys.");
       console.log(error);
@@ -46,13 +47,12 @@ const Auth: React.FC = () => {
     }
   };
 
-  // --- FUNCTION 2: VERIFY & SAVE TO GOOGLE SHEET ---
+  // --- FUNCTION 2: VERIFY & SAVE ---
   const handleVerifyAndSave = async () => {
     if (userOtp !== generatedOtp) return alert("Wrong code! Check your email again.");
 
     setLoading(true);
     try {
-      // Your existing Google Script logic
       await fetch("https://script.google.com/macros/s/AKfycbx0X0lQubkUsql-E-v5sim-RdRzGcr7OOakfsPgA5_0ihbIM-25h33OevtDNaghUDDTVw/exec", {
         method: 'POST',
         body: JSON.stringify({ name, email, password, phone }),
@@ -66,6 +66,22 @@ const Auth: React.FC = () => {
     }
   };
 
+  // --- NEW FUNCTION 3: SECURE LOGIN CHECK ---
+  const handleLoginSubmit = () => {
+    if (!email || !password) return alert("Please fill all fields");
+
+    // Check if a user with this email and password exists
+    const userExists = users.some(
+      (u) => u.email === email && u.password === password
+    );
+
+    if (userExists) {
+      setScreen(AppScreen.HOME);
+    } else {
+      alert("Invalid email or password");
+    }
+  };
+
   return (
     <div className="flex flex-col h-full p-8 bg-white overflow-y-auto">
       <div className="mt-10 text-center mb-8">
@@ -73,7 +89,6 @@ const Auth: React.FC = () => {
       </div>
 
       {!isVerifying ? (
-        /* --- SIGNUP / LOGIN FORM --- */
         <div className="space-y-4">
           {!isLogin && (
             <input type="text" placeholder="Full Name" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setName(e.target.value)} />
@@ -82,7 +97,8 @@ const Auth: React.FC = () => {
           <input type="password" placeholder="Password" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setPassword(e.target.value)} />
           
           <button 
-            onClick={isLogin ? () => setScreen(AppScreen.HOME) : handleStartSignup}
+            // --- UPDATED THIS LINE ---
+            onClick={isLogin ? handleLoginSubmit : handleStartSignup}
             className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold uppercase"
           >
             {loading ? "Processing..." : (isLogin ? "Login" : "Register & Get Code")}
@@ -93,7 +109,6 @@ const Auth: React.FC = () => {
           </button>
         </div>
       ) : (
-        /* --- OTP VERIFICATION SCREEN --- */
         <div className="space-y-6 text-center animate-pulse">
           <p className="text-sm text-gray-500">A code was sent to <b>{email}</b></p>
           <input 
