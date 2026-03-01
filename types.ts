@@ -1,4 +1,3 @@
-
 export enum AppScreen {
   ONBOARDING = 'ONBOARDING',
   AUTH = 'AUTH',
@@ -24,13 +23,21 @@ export interface Station {
   id: string;
   name: string;
   address: string;
+  lat: string;   // Added to match Google Sheet / OCM string format
+  lng: string;   // Added to match Google Sheet / OCM string format
   distance: string;
+  roadDistance?: string; // For the real travel distance we calculate
   cost: string;
   openingHours: string;
   coordinates: { lat: number; lng: number };
   chargers: Charger[];
-  attractions: string[]; // Changed from amenities
+  attractions: string | string[]; // Flexible for CSV strings or API arrays
   imageUrl: string;
+  
+  // --- REAL-TIME DATA EXTENSIONS ---
+  source?: 'sheet' | 'ocm'; // Tells us where the data came from
+  connections?: any[];      // Holds the raw port data from Open Charge Map
+  numSlots?: number;        // The physical count of charging points
 }
 
 export interface Vehicle {

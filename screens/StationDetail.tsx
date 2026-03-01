@@ -4,132 +4,101 @@ import { AppScreen } from '../types';
 
 const StationDetail: React.FC = () => {
   const { selectedStation, setScreen } = useApp();
-
   if (!selectedStation) return null;
-
-  // We treat it as 'any' so we can use custom columns from your Google Sheet
   const s = selectedStation as any;
 
-  // NEW LOGIC: This takes your Google Sheet 'attractions' cell (e.g., "Park, Cafe, Gym")
-  // and turns it into a list. If the cell is empty, it uses the fallback list.
-  const attractionsList = s.attractions 
-    ? s.attractions.split(',').map((item: string) => item.trim()) 
-    : ["Local Café", "Shopping Mall", "Public Park"];
-
-  const chargers = s.chargers || [
-    { id: '1', type: 'Level 2', capacity: '22kW', isAvailable: s.status === 'Available' },
-    { id: '2', type: 'DC Fast', capacity: '50kW', isAvailable: false }
-  ];
+  const stationImage = s.imageUrl || `https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&q=80&w=800`;
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header Image Area */}
-      <div className="relative h-64">
-         <img 
-           src={s.imageUrl || `https://picsum.photos/seed/${s.id}/800/600`} 
-           className="w-full h-full object-cover" 
-           alt="station" 
-         />
-         <button 
-           onClick={() => setScreen(AppScreen.HOME)}
-           className="absolute top-12 left-6 bg-white/20 backdrop-blur p-3 rounded-2xl text-white hover:bg-white/40 transition-all shadow-lg"
-         >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-         </button>
-         <div className="absolute bottom-4 left-6 bg-green-500 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-2xl">
-           {s.status || 'Verified Spot'}
-         </div>
+    <div className="flex flex-col h-full bg-white font-sans text-gray-900 overflow-y-auto">
+      
+      {/* 1. HERO IMAGE SECTION */}
+      <div className="relative h-80 w-full shrink-0">
+        <img src={stationImage} alt={s.name} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-black/20"></div>
+        <button 
+          onClick={() => setScreen(AppScreen.HOME)} 
+          className="absolute top-12 left-6 w-12 h-12 flex items-center justify-center bg-white/90 backdrop-blur-md rounded-2xl text-xl shadow-xl active:scale-90 transition-all"
+        >
+          ←
+        </button>
+
+        {/* Real Slot Count Badge */}
+        <div className="absolute bottom-6 left-8 bg-green-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.1em] shadow-lg">
+          {s.numSlots || 1} {s.numSlots === 1 ? 'Slot' : 'Slots'} Available
+        </div>
       </div>
 
-      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        <div className="flex justify-between items-start">
-           <div>
-              <h1 className="text-2xl font-black text-gray-900 leading-tight">{s.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                 <span className={`w-2 h-2 rounded-full ${s.status === 'Available' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                 <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">
-                   {s.status === 'Available' ? 'Active & Available' : 'Currently Busy'}
-                 </p>
-              </div>
-           </div>
-           <div className="text-right">
-              <span className="text-gray-900 font-black text-lg block">{s.distance || '0.5km'}</span>
-              <span className="text-[10px] text-gray-400 font-bold uppercase">Away</span>
-           </div>
+      {/* 2. CONTENT SECTION */}
+      <div className="px-8 pt-8 space-y-10 pb-12">
+        
+        {/* Name & Source Tag */}
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-black leading-tight tracking-tighter text-gray-900 uppercase">
+              {s.name}
+            </h1>
+            <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mt-1">
+              {s.source === 'ocm' ? '● Live Public Station' : '● Private Station'}
+            </p>
+            <p className="text-xs font-bold text-gray-400 mt-2 italic leading-relaxed">{s.address}</p>
+          </div>
         </div>
 
-        {/* Pricing & Address Card */}
-        <div className="bg-gray-50 p-5 rounded-[2rem] border border-gray-100 space-y-4">
-           <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-400 font-bold">Charging Rate</span>
-              <span className="text-gray-900 font-black">{s.cost || 'FREE'}</span>
-           </div>
-           <div className="flex justify-between items-start text-sm gap-4">
-              <span className="text-gray-400 font-bold shrink-0">Exact Address</span>
-              <span className="text-gray-900 font-bold text-right leading-relaxed">{s.address}</span>
-           </div>
-        </div>
+        {/* REAL CONNECTORS SECTION (The Big Change) */}
+        
 
-        {/* Attractions Section - UPDATED to use attractionsList */}
-        <div>
-           <h3 className="font-black text-gray-900 text-lg mb-4 flex items-center gap-2">
-              <span className="text-xl">🏙️</span> Attractions Nearby
-           </h3>
-           <div className="grid grid-cols-2 gap-3">
-              {attractionsList.map((attraction: string, idx: number) => (
-                 <div key={idx} className="bg-blue-50/50 p-4 rounded-3xl border border-blue-100 flex flex-col items-start gap-2">
-                    <span className="text-[11px] font-black text-gray-800 uppercase leading-tight">{attraction}</span>
-                    <span className="text-[9px] font-bold text-blue-400 uppercase tracking-tight">Walking distance</span>
-                 </div>
-              ))}
-           </div>
-        </div>
+[Image of electric vehicle charging connector types]
 
-        {/* Charging Slots Section */}
         <div className="space-y-4">
-           <div className="flex justify-between items-center">
-              <h3 className="font-black text-gray-900 text-lg">Charging Slots</h3>
-              <span className="text-[10px] font-bold text-green-500 bg-green-50 px-2 py-1 rounded-lg uppercase">Cloud Sync</span>
-           </div>
-           <div className="space-y-3 pb-4">
-              {chargers.map((c: any) => (
-                 <div key={c.id} className="bg-white p-5 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-4">
-                       <div className={`${c.isAvailable ? 'bg-green-500' : 'bg-gray-400'} p-3 rounded-2xl shadow-lg`}>
-                          <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                             <path d="M13 10V3L4 14H11V21L20 10H13Z" />
-                          </svg>
-                       </div>
-                       <div>
-                          <p className="font-black text-gray-900">{c.type}</p>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{c.capacity}</p>
-                       </div>
-                    </div>
-                    <p className={`text-[10px] font-black px-3 py-1.5 rounded-full ${c.isAvailable ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                       {c.isAvailable ? 'VACANT' : 'OCCUPIED'}
+          <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Technical Specifications</h3>
+          <div className="grid grid-cols-1 gap-3">
+            {s.connections && s.connections.length > 0 ? (
+              s.connections.map((conn: any, i: number) => (
+                <div key={i} className="p-5 bg-gray-50 rounded-[2rem] border border-gray-100 flex justify-between items-center">
+                  <div>
+                    <p className="font-black text-gray-900 text-sm uppercase">
+                      {conn.ConnectionType?.Title || "Universal Port"}
                     </p>
-                 </div>
-              ))}
-           </div>
+                    <p className="text-[10px] font-bold text-gray-400">
+                      {conn.PowerKW ? `${conn.PowerKW} kW` : 'Standard'} • {conn.CurrentType?.Title || 'Fast Charge'}
+                    </p>
+                  </div>
+                  <div className={`w-3 h-3 rounded-full ${conn.StatusType?.IsOperational !== false ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                </div>
+              ))
+            ) : (
+              // Fallback if no connection data exists
+              <div className="p-5 bg-gray-50 rounded-[2rem] border border-gray-100">
+                <p className="font-black text-gray-900 text-sm uppercase">Standard Connector</p>
+                <p className="text-[10px] font-bold text-gray-400">Information not verified</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Bottom Actions */}
-      <div className="p-6 pt-2 bg-white/80 backdrop-blur-md border-t border-gray-100 flex gap-4">
-         <button 
-           onClick={() => setScreen(AppScreen.NAVIGATION)}
-           className="flex-1 bg-gray-900 text-white py-4 rounded-3xl font-black text-sm shadow-xl"
-         >
-            Get Route
-         </button>
-         <button 
-           onClick={() => setScreen(AppScreen.BOOKING)}
-           className="flex-1 bg-green-500 text-white py-4 rounded-3xl font-black text-sm shadow-xl"
-         >
-            Reserve Now
-         </button>
+        {/* Pricing Info */}
+        <div className="p-6 bg-gray-50 rounded-[2rem] border border-gray-100 flex justify-between items-center">
+          <div>
+             <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Pricing</p>
+             <p className="text-2xl font-black text-gray-900">₹{s.cost || '15'}<span className="text-xs text-gray-400 font-bold">/kWh</span></p>
+          </div>
+          <div className="text-right">
+             <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Road Distance</p>
+             <p className="text-xl font-black text-green-600">{s.roadDistance || 'Nearby'}</p>
+          </div>
+        </div>
+
+        {/* Bottom Booking Button */}
+        <div className="pt-4">
+            <button 
+                onClick={() => setScreen(AppScreen.BOOKING)}
+                className="w-full bg-gray-900 text-white py-6 rounded-[2rem] font-black text-sm shadow-2xl flex items-center justify-center gap-3 hover:bg-black active:scale-[0.98] transition-all"
+            >
+                START BOOKING
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+            </button>
+        </div>
       </div>
     </div>
   );

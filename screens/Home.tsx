@@ -1,179 +1,170 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../App';
-import { AppScreen, Station } from '../types';
+import { AppScreen } from '../types';
 import BottomNav from '../components/BottomNav';
-
-// 1. Leaflet Imports
-import { MapContainer, TileLayer, Marker, useMap, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default Leaflet marker icons
-const DefaultIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
+// --- ICONS ---
+const GreenIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41], iconAnchor: [12, 41]
 });
-L.Marker.prototype.options.icon = DefaultIcon;
 
-// Custom Icon for User Location
 const UserIcon = L.divIcon({
-  className: 'custom-user-icon',
-  html: `<div class="relative">
-          <div class="absolute -inset-2 bg-blue-500/30 rounded-full animate-ping"></div>
-          <div class="w-4 h-4 bg-blue-600 rounded-full border-2 border-white shadow-lg"></div>
-         </div>`,
-  iconSize: [16, 16]
+  className: 'user-icon',
+  html: `<div class="relative"><div class="absolute -inset-3 bg-green-500/20 rounded-full animate-ping"></div><div class="w-5 h-5 bg-green-600 rounded-full border-2 border-white shadow-lg"></div></div>`,
+  iconSize: [20, 20]
 });
-
-// 2. The Location Control Component (The Button Logic)
-function LocationControl() {
-  const map = useMap();
-  const [position, setPosition] = useState<L.LatLng | null>(null);
-
-  useEffect(() => {
-    map.on('locationfound', (e) => {
-      setPosition(e.latlng);
-      map.flyTo(e.latlng, 15, { animate: true });
-    });
-  }, [map]);
-
-  const handleLocate = () => {
-    map.locate({ enableHighAccuracy: true });
-  };
-
-  return (
-    <>
-      {position && <Marker position={position} icon={UserIcon} zIndexOffset={1000} />}
-      
-      {/* 📍 THE "GO TO MY LOCATION" BUTTON */}
-      <div className="absolute bottom-28 right-4 z-[1000]">
-        <button 
-          onClick={handleLocate}
-          className="bg-white p-4 rounded-full shadow-2xl border border-gray-100 active:scale-95 transition-transform"
-        >
-          <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
-      </div>
-    </>
-  );
-}
 
 const Home: React.FC = () => {
   const { setScreen, setSelectedStation, stations } = useApp();
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [userPos, setUserPos] = useState<L.LatLng | null>(null);
+  const [routePath, setRoutePath] = useState<[number, number][] | null>(null);
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [hasCenteredInitial, setHasCenteredInitial] = useState(false);
 
-  const handleStationClick = (station: Station) => {
-    setSelectedStation(station);
-    setScreen(AppScreen.STATION_DETAIL);
+  // Default fallback only if GPS is totally disabled
+  const fallbackCoords: [number, number] = [10.8302, 76.0234];
+
+  const getBirdDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
   };
 
-  const filteredStations = stations.filter(s => 
-    s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.address?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleAction = async (s: any, targetScreen: AppScreen | 'MAP') => {
+    setSelectedStation(s);
+    if (targetScreen !== 'MAP') setScreen(targetScreen);
+  };
+
+  const processedStations = stations
+    .map(s => ({ ...s, birdDist: userPos ? getBirdDistance(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)) : 0 }))
+    .filter(s => s.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => (a.birdDist || 0) - (b.birdDist || 0));
+
+  // --- NEW: THE GOOGLE MAPS STYLE CONTROLLER ---
+  const MapController = () => {
+    const map = useMap();
+    
+    useEffect(() => {
+      setMapInstance(map);
+      // Immediate high-accuracy location request
+      map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true, watch: true });
+    }, [map]);
+
+    useMapEvents({
+      locationfound(e) {
+        setUserPos(e.latlng);
+        // Only "Fly To" automatically the very first time the app opens
+        if (!hasCenteredInitial) {
+          map.flyTo(e.latlng, 15);
+          setHasCenteredInitial(true);
+        }
+      },
+      locationerror() {
+        // If GPS fails, then we go to Kuttipuram as a backup
+        if (!hasCenteredInitial) {
+            map.setView(fallbackCoords, 13);
+            setHasCenteredInitial(true);
+        }
+      }
+    });
+
+    return userPos ? <Marker position={userPos} icon={UserIcon} zIndexOffset={1000} /> : null;
+  };
+
+  const centerOnUser = () => {
+    if (mapInstance && userPos) mapInstance.flyTo(userPos, 16);
+  };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 relative overflow-hidden">
+    <div className="flex flex-col h-full w-full relative overflow-hidden bg-white font-sans text-gray-900">
       
-      {/* 3. FLOATING HEADER UI */}
-      <div className="absolute top-0 left-0 right-0 z-[1000] p-4 pt-12 space-y-4 pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <div className="flex-1 relative">
-            <input 
-              type="text" 
-              placeholder="Search EV spots..." 
-              className="w-full bg-white shadow-xl p-4 pl-12 rounded-2xl text-sm focus:outline-none"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <svg className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      {/* SEARCH BAR */}
+      <div className="absolute top-14 left-0 right-0 z-[100] px-6">
+        <div className="relative max-w-md mx-auto">
+          <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
           </div>
-        </div>
-
-        <div className="flex bg-white p-1 rounded-2xl shadow-lg w-fit mx-auto ring-1 ring-black/5 pointer-events-auto">
-          <button 
-            onClick={() => setViewMode('map')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'map' ? 'bg-green-500 text-white shadow-md' : 'text-gray-500'}`}
-          >
-            Map
-          </button>
-          <button 
-            onClick={() => setViewMode('list')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-green-500 text-white shadow-md' : 'text-gray-500'}`}
-          >
-            List
-          </button>
+          <input 
+            type="text" 
+            placeholder="Search for a charger..." 
+            className="w-full bg-white border border-gray-100 shadow-xl p-4 pl-12 rounded-2xl outline-none"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* 4. MAIN VIEW */}
-      <div className="flex-1 relative">
-        {viewMode === 'map' ? (
-          <div className="h-full w-full">
-            <MapContainer 
-              center={[51.505, -0.09]} 
-              zoom={13} 
-              zoomControl={false}
-              className="h-full w-full z-0" /* Ensure Map has lowest z-index */
-            >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              
-              <LocationControl />
+      {/* MAP */}
+      <div className="absolute inset-0 z-0 bg-gray-100">
+        <MapContainer center={fallbackCoords} zoom={13} zoomControl={false} className="h-full w-full">
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+          <MapController />
+          {processedStations.map((s: any, i) => (
+            <Marker 
+                key={i} 
+                position={[parseFloat(s.lat), parseFloat(s.lng)]} 
+                icon={GreenIcon} 
+                eventHandlers={{ click: () => handleAction(s, 'MAP') }} 
+            />
+          ))}
+        </MapContainer>
+      </div>
 
-              {filteredStations.map((s, i) => {
-                const lat = parseFloat(s.lat || "0");
-                const lng = parseFloat(s.lng || "0");
-                if (!lat || !lng) return null;
+      {/* LOCATE ME BUTTON */}
+      <button 
+        onClick={centerOnUser}
+        style={{ bottom: isDrawerOpen ? 'calc(50vh + 24px)' : '185px' }}
+        className="absolute right-6 z-[160] w-12 h-12 bg-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-500"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+        </svg>
+      </button>
 
-                return (
-                  <Marker 
-                    key={s.id || i} 
-                    position={[lat, lng]}
-                    eventHandlers={{ click: () => handleStationClick(s) }}
-                  />
-                );
-              })}
-              <ZoomControl position="bottomright" />
-            </MapContainer>
-          </div>
-        ) : (
-          <div className="h-full overflow-y-auto pt-44 pb-32 px-4 space-y-4">
-            {filteredStations.map((station, index) => (
-              <StationCard 
-                key={station.id || index} 
-                station={station} 
-                onClick={() => handleStationClick(station)} 
-              />
+      {/* DRAWER */}
+      <div className={`absolute left-0 right-0 z-[150] bg-white rounded-t-[2.5rem] shadow-2xl transition-all duration-500 ${isDrawerOpen ? 'bottom-0 h-[50vh]' : 'bottom-[72px] h-24'}`}>
+        <div className="w-full py-4 flex justify-center cursor-pointer" onClick={() => setIsDrawerOpen(!isDrawerOpen)}>
+          <div className="w-12 h-1.5 bg-gray-100 rounded-full"></div>
+        </div>
+        <div className="px-6 overflow-y-auto h-full pb-32">
+          <div className="space-y-3">
+            {processedStations.map((s: any, i) => (
+              <div key={i} className="p-4 bg-gray-50 rounded-3xl border border-gray-100">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm uppercase">{s.name}</h3>
+                    <p className="text-[10px] text-gray-400 truncate w-44">{s.address}</p>
+                  </div>
+                  <span className="text-[10px] font-black text-green-600 bg-white px-2 py-1 rounded-lg border border-gray-100">
+                    {s.birdDist?.toFixed(1)} km
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAction(s, AppScreen.STATION_DETAIL)} className="flex-1 bg-white border border-green-200 py-2.5 rounded-xl text-[9px] font-black text-green-600 uppercase">Details</button>
+                  <button onClick={() => handleAction(s, AppScreen.BOOKING)} className="flex-[1.5] bg-green-500 text-white py-2.5 rounded-xl text-[9px] font-black uppercase shadow-lg">Reserve</button>
+                </div>
+              </div>
             ))}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* 5. NAVBAR (ENSURE HIGH Z-INDEX) */}
-      <div className="relative z-[2000]">
+      <div className="absolute bottom-0 left-0 right-0 z-[200]">
         <BottomNav active="home" />
-      </div>
-    </div>
-  );
-};
-
-// ... StationCard component stays the same
-const StationCard: React.FC<{ station: any; onClick: () => void }> = ({ station, onClick }) => {
-  return (
-    <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100" onClick={onClick}>
-      <h3 className="font-bold text-lg">{station.name}</h3>
-      <p className="text-gray-400 text-xs mb-4">{station.address}</p>
-      <div className="flex gap-3">
-        <button className="flex-1 border border-green-500 text-green-500 py-3 rounded-2xl font-bold text-sm">Details</button>
-        <button className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-bold text-sm">Reserve</button>
       </div>
     </div>
   );
