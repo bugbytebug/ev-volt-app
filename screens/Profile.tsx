@@ -1,11 +1,12 @@
-
 import React from 'react';
 import { useApp } from '../App';
 import { AppScreen } from '../types';
 import BottomNav from '../components/BottomNav';
+import { useAuth } from '../services/AuthContext'; // 1. Import the Auth hook
 
 const Profile: React.FC = () => {
   const { setScreen } = useApp();
+  const { user, logout } = useAuth(); // 2. Grab the real user and logout function
 
   const menuItems = [
     { label: 'Profile', icon: '👤', screen: AppScreen.PROFILE },
@@ -15,14 +16,23 @@ const Profile: React.FC = () => {
     { label: 'Terms and conditions', icon: '📜', screen: AppScreen.HOME },
   ];
 
+  // Helper for logout button
+  const handleLogout = () => {
+    logout(); // Clears the user data from memory
+    setScreen(AppScreen.AUTH); // Sends them back to login screen
+  };
+
   return (
     <div className="flex flex-col h-full bg-white relative">
       <div className="p-6 pt-12 flex flex-col items-center">
          <h1 className="text-xl font-bold mb-10">Profile</h1>
          
          <div className="relative mb-6">
-            <div className="w-28 h-28 bg-gray-100 rounded-full border-4 border-green-50 overflow-hidden shadow-xl">
-               <img src="https://picsum.photos/seed/user/300" className="w-full h-full object-cover" alt="user" />
+            <div className="w-28 h-28 bg-gray-100 rounded-full border-4 border-green-50 overflow-hidden shadow-xl flex items-center justify-center">
+               {/* Show profile pic OR a fallback initial if no pic exists */}
+               <span className="text-3xl font-black text-green-600">
+                  {user?.name?.charAt(0).toUpperCase() || "U"}
+               </span>
             </div>
             <button className="absolute bottom-0 right-0 bg-green-500 p-2 rounded-full border-4 border-white text-white shadow-lg">
                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -32,8 +42,13 @@ const Profile: React.FC = () => {
             </button>
          </div>
 
-         <h2 className="text-xl font-black text-gray-900">Ronald Richards</h2>
-         <p className="text-gray-400 text-sm font-medium">ronaldrichards@gmail.com</p>
+         {/* 3. UPDATED: Display REAL Name and Email */}
+         <h2 className="text-xl font-black text-gray-900">
+            {user?.name || "Guest User"}
+         </h2>
+         <p className="text-gray-400 text-sm font-medium">
+            {user?.email || "No email found"}
+         </p>
 
          <div className="w-full mt-10 space-y-2">
             {menuItems.map(item => (
@@ -53,7 +68,7 @@ const Profile: React.FC = () => {
             ))}
             
             <button 
-              onClick={() => setScreen(AppScreen.AUTH)}
+              onClick={handleLogout} // 4. UPDATED: Call the logout helper
               className="w-full flex items-center justify-between p-5 text-red-500 hover:bg-red-50 rounded-3xl transition-all"
             >
                <div className="flex items-center gap-4">
