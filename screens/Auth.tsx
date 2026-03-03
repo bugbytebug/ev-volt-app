@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import emailjs from '@emailjs/browser';
 import { useApp } from '../App';
 import { AppScreen } from '../types';
+import { useAuth } from '../services/AuthContext';
 
 const Auth: React.FC = () => {
-  // --- ADDED 'users' HERE ---
+  const { login } = useAuth(); // Access the global login function
   const { setScreen, users } = useApp(); 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -17,7 +18,6 @@ const Auth: React.FC = () => {
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // --- FUNCTION 1: SEND REAL EMAIL ---
   const handleStartSignup = async () => {
     if (!name || !email || !password) return alert("Please fill all fields");
 
@@ -47,7 +47,6 @@ const Auth: React.FC = () => {
     }
   };
 
-  // --- FUNCTION 2: VERIFY & SAVE ---
   const handleVerifyAndSave = async () => {
     if (userOtp !== generatedOtp) return alert("Wrong code! Check your email again.");
 
@@ -57,6 +56,10 @@ const Auth: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ name, email, password, phone }),
       });
+      
+      // UPDATE: Automatically log in the user after verification
+      login({ name, email }); 
+      
       alert("Verified! Account Created.");
       setScreen(AppScreen.HOME);
     } catch (e) {
@@ -66,21 +69,26 @@ const Auth: React.FC = () => {
     }
   };
 
-  // --- NEW FUNCTION 3: SECURE LOGIN CHECK ---
-  const handleLoginSubmit = () => {
-    if (!email || !password) return alert("Please fill all fields");
+ const handleLoginSubmit = () => {
+  if (!email || !password) return alert("Please fill all fields");
 
-    // Check if a user with this email and password exists
-    const userExists = users.some(
-      (u) => u.email === email && u.password === password
-    );
+  // Check if users exist and find the matching one
+ // Inside handleLoginSubmit in Auth.tsx
+const foundUser = users?.find(
+  (u) => u.email?.toLowerCase() === email.toLowerCase() && u.password === password
+);
 
-    if (userExists) {
-      setScreen(AppScreen.HOME);
-    } else {
-      alert("Invalid email or password");
-    }
-  };
+  if (foundUser) {
+    // Ensure we map the correct keys from your Google Sheet/Database
+    login({ 
+      name: foundUser.name || foundUser.Name || "User", 
+      email: foundUser.email || foundUser.Email 
+    });
+    setScreen(AppScreen.HOME);
+  } else {
+    alert("Invalid email or password");
+  }
+};
 
   return (
     <div className="flex flex-col h-full p-8 bg-white overflow-y-auto">
@@ -97,7 +105,6 @@ const Auth: React.FC = () => {
           <input type="password" placeholder="Password" className="w-full p-4 bg-gray-50 border rounded-2xl" onChange={(e) => setPassword(e.target.value)} />
           
           <button 
-            // --- UPDATED THIS LINE ---
             onClick={isLogin ? handleLoginSubmit : handleStartSignup}
             className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold uppercase"
           >
